@@ -50,6 +50,7 @@ class PyTorchDeep(Explainer):
         self.multi_output = False
         self.num_outputs = 1
         with torch.no_grad():
+            # MODIFICATION to fix for device and tuple output
             outputs, _ = model(*data)
 
             # also get the device everything is running on
@@ -340,27 +341,6 @@ def linear_1d(module, grad_input, grad_output):
 
 def nonlinear_1d(module, grad_input, grad_output):
     import torch
-    if isinstance(module.y, torch.nn.ParameterList):
-        if hasattr(module, "last_layer_idx"):
-            layer_idx = getattr(module, "last_layer_idx") - 1
-            setattr(module, "last_layer_idx", layer_idx)
-        else:
-            layer_idx = len(module.x) - 1
-            setattr(module, "last_layer_idx", layer_idx)
-
-        module_x = module.x[layer_idx]
-        module_y = module.y[layer_idx]
-
-        if layer_idx == 0:
-            del module.x
-            del module.y
-            del module.last_layer_idx
-    else:
-        module_x = module.x
-        module_y = module.y
-        del module.x
-        del module.y
-
     delta_out = module.y[: int(module.y.shape[0] / 2)] - module.y[int(module.y.shape[0] / 2):]
 
     delta_in = module.x[: int(module.x.shape[0] / 2)] - module.x[int(module.x.shape[0] / 2):]
@@ -368,6 +348,7 @@ def nonlinear_1d(module, grad_input, grad_output):
     # handles numerical instabilities where delta_in is very small by
     # just taking the gradient in those cases
     grads = [None for _ in grad_input]
+    # MODIFICATION added to debug the module which trhows the error
     try:
         # TODO which function makes it crash? -> relu!
         grads[0] = torch.where(torch.abs(delta_in.repeat(dup0)) < 1e-6, grad_input[0],
