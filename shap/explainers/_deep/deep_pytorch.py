@@ -212,6 +212,8 @@ class PyTorchDeep(Explainer):
                 with torch.no_grad():
                     model_output_values = self.model(*X)
 
+                if isinstance(model_output_values, tuple):
+                    model_output_values, _ = model_output_values
             _check_additivity(self, model_output_values.cpu(), output_phis)
 
         if isinstance(output_phis, list):
