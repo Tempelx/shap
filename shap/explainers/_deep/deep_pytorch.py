@@ -51,7 +51,9 @@ class PyTorchDeep(Explainer):
         self.num_outputs = 1
         with torch.no_grad():
             # MODIFICATION to fix for device and tuple output
-            outputs, _ = model(*data)
+            outputs = model(*data)
+            if isinstance(outputs, tuple):
+                outputs, l1 = outputs
 
             # also get the device everything is running on
             self.device = outputs.device
@@ -99,7 +101,9 @@ class PyTorchDeep(Explainer):
         import torch
         self.model.zero_grad()
         X = [x.requires_grad_() for x in inputs]
-        outputs, _ = self.model(*X)
+        outputs = self.model(*X)
+        if isinstance(outputs, tuple):
+            outputs, l1 = outputs
         selected = [val for val in outputs[:, idx]]
         grads = []
         if self.interim:
@@ -214,6 +218,7 @@ class PyTorchDeep(Explainer):
 
                 if isinstance(model_output_values, tuple):
                     model_output_values, _ = model_output_values
+
             _check_additivity(self, model_output_values.cpu(), output_phis)
 
         if isinstance(output_phis, list):
@@ -356,7 +361,6 @@ def nonlinear_1d(module, grad_input, grad_output):
         grads[0] = torch.where(torch.abs(delta_in.repeat(dup0)) < 1e-6, grad_input[0],
                                grad_output[0] * (delta_out / delta_in).repeat(dup0))
     except RuntimeError:
-        print("RunTimeError with {} module ".format(module))
         grads = [None for _ in grad_input]
     except TypeError:
         print("TypeError with {} module ".format(module))
@@ -394,6 +398,7 @@ op_handler['Identity'] = linear_1d
 op_handler['Hardswish'] = nonlinear_1d
 op_handler['LeakyReLU'] = nonlinear_1d
 op_handler['ReLU'] = nonlinear_1d
+op_handler['ReLU6'] = nonlinear_1d
 op_handler['ELU'] = nonlinear_1d
 op_handler['Sigmoid'] = nonlinear_1d
 op_handler["Tanh"] = nonlinear_1d
