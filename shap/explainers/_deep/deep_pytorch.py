@@ -364,6 +364,8 @@ def nonlinear_1d(module, grad_input, grad_output):
         grads = [None for _ in grad_input]
     except TypeError:
         print("TypeError with {} module ".format(module))
+    except Exception:
+        print("Exception with {} module ".format(module))
     return tuple(grads)
 
 
