@@ -357,11 +357,11 @@ def nonlinear_1d(module, grad_input, grad_output):
     grads = [None for _ in grad_input]
     # MODIFICATION added to debug the module which trhows the error
     try:
-        # TODO which function makes it crash? -> relu!
         grads[0] = torch.where(torch.abs(delta_in.repeat(dup0)) < 1e-6, grad_input[0],
                                grad_output[0] * (delta_out / delta_in).repeat(dup0))
     except RuntimeError:
         grads = [None for _ in grad_input]
+        print("RuntimeError with {} module".format(module))
     except TypeError:
         print("TypeError with {} module ".format(module))
     except Exception:
