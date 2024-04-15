@@ -394,7 +394,7 @@ op_handler['BatchNorm1d'] = linear_1d
 op_handler['BatchNorm2d'] = linear_1d
 op_handler['BatchNorm3d'] = linear_1d
 
-# ADD
+# ADD of layers
 op_handler['Identity'] = linear_1d
 
 op_handler['Hardswish'] = nonlinear_1d
