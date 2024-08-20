@@ -242,10 +242,24 @@ def deeplift_grad(module, grad_input, grad_output):
     gradient for an nn.Module
     """
     # first, get the module type
+    assert grad_input[0].shape == grad_output[0].shape, (
+        f"Shape mismatch: grad_input shape {grad_input[0].shape} not match grad_output shape {grad_output[0].shape}"
+    )
+
     module_type = module.__class__.__name__
     # first, check the module is supported
     if module_type in op_handler:
         if op_handler[module_type].__name__ not in ['passthrough', 'linear_1d']:
+            # Ensure the module's input and output shapes match grad_input and grad_output shapes
+            assert module.input_shape == grad_input[0].shape, (
+                f"Shape mismatch: module input shape {module.x} "
+                f"does not match grad_input shape {grad_input[0].shape}"
+            )
+            assert module.output_shape == grad_output[0].shape, (
+                f"Shape mismatch: module output shape {module.y} "
+                f"does not match grad_output shape {grad_output[0].shape}"
+            )
+
             return op_handler[module_type](module, grad_input, grad_output)
     else:
         warnings.warn(f'unrecognized nn.Module: {module_type}')
