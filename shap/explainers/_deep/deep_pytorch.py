@@ -415,7 +415,7 @@ op_handler["BatchNorm3d"] = linear_1d
 
 # ADD of layers
 op_handler['Identity'] = linear_1d
-
+op_handler['SiLU'] = nonlinear_1d
 op_handler['Swish'] = nonlinear_1d
 op_handler['Hardswish'] = nonlinear_1d
 op_handler['LeakyReLU'] = nonlinear_1d
