@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
-from typing_extensions import TypeAlias
 
 from .. import Explanation
 from ..utils import OpChain
@@ -14,17 +13,19 @@ if TYPE_CHECKING:
     from matplotlib.colors import Colormap
 
 
-def convert_color(color: str) -> np.ndarray | Colormap | str:
+def convert_color(color: str | np.ndarray) -> np.ndarray | Colormap | str:
     """Converts a color specification alias into its actual representation"""
-    if color == "shap_red":
-        return colors.red_rgb
-    if color == "shap_blue":
-        return colors.blue_rgb
-
-    try:
-        return plt.get_cmap(color)
-    except ValueError:
+    if isinstance(color, np.ndarray):
         return color
+    elif isinstance(color, str) and color == "shap_red":
+        return colors.red_rgb
+    elif isinstance(color, str) and color == "shap_blue":
+        return colors.blue_rgb
+    else:
+        try:
+            return plt.get_cmap(color)
+        except ValueError:
+            return color
 
 
 def convert_ordering(ordering, shap_values):
@@ -238,7 +239,7 @@ def sort_inds(partition_tree, leaf_values, pos=None, inds=None):
 
 
 # Various ways to specify a desired axis limit in plots
-AxisLimitSpec: TypeAlias = Union[Explanation, str, float, None]
+type AxisLimitSpec = Explanation | str | float | None
 
 
 def parse_axis_limit(ax_limit: AxisLimitSpec, ax_values: np.ndarray, *, is_shap_axis: bool) -> float | None:

@@ -2,9 +2,12 @@ import logging
 
 import numpy as np
 import pandas as pd
-from numba import njit
 
 from .. import utils
+
+# nanobind's stub generator skips underscore-prefixed names, so _cutils.pyi has
+# no declaration for this one even though the binding exists.
+from .._cutils import _delta_masking  # type: ignore[attr-defined]
 from .._serializable import Deserializer, Serializer
 from ..utils import MaskedModel
 from ..utils._exceptions import DimensionError, InvalidClusteringError
@@ -16,7 +19,7 @@ log = logging.getLogger("shap")
 class Tabular(Masker):
     """A common base class for Independent and Partition."""
 
-    def __init__(self, data, max_samples=100, clustering=None):
+    def __init__(self, data, max_samples=100, clustering=None, partition=None):
         """This masks out tabular features by integrating over the given background dataset.
 
         Parameters
@@ -54,10 +57,20 @@ class Tabular(Masker):
             data = np.expand_dims(data["mean"], 0)
 
         if hasattr(data, "shape") and data.shape[0] > max_samples:
+            log.warning(
+                "Background dataset has %d samples but max_samples=%d. "
+                "Subsampling to %d samples for SHAP value computation. "
+                "To use all samples, set max_samples=%d when initializing the masker.",
+                data.shape[0],
+                max_samples,
+                max_samples,
+                data.shape[0],
+            )
             data = utils.sample(data, max_samples)
 
         self.data = data
         self.clustering = clustering
+        self.partition = partition
         self.max_samples = max_samples
 
         # # warn users about large background data sets
@@ -66,7 +79,9 @@ class Tabular(Masker):
         #                 "run times. Consider shap.utils.sample(data, K) to summarize the background using only K samples.")
 
         # compute the clustering of the data
-        if clustering is not None:
+        if clustering is not None and partition is not None:
+            raise ValueError("You cannot pass both 'clustering' and 'partition'. Please provide only one.")
+        elif clustering is not None:
             if isinstance(clustering, str):
                 self.clustering = utils.hclust(data, metric=clustering)
             elif isinstance(clustering, np.ndarray):
@@ -75,8 +90,13 @@ class Tabular(Masker):
                 raise InvalidClusteringError(
                     "Unknown clustering given! Make sure you pass a distance metric as a string, or a clustering as a numpy.ndarray."
                 )
+            self.partition = None
+        elif partition is not None:
+            self.partition = partition
+            self.clustering = None
         else:
             self.clustering = None
+            self.partition = None
 
         # self._last_mask = np.zeros(self.data.shape[1], dtype=bool)
         self._masked_data = data.copy()
@@ -99,7 +119,9 @@ class Tabular(Masker):
         # if mask is an array of integers then we are doing delta masking
         if np.issubdtype(mask.dtype, np.integer):
             variants = ~self.invariants(x)
-            curr_delta_inds = np.zeros(len(mask), dtype=int)
+            mask = np.asarray(mask, dtype=np.int64)
+            x = np.asarray(x, dtype=self.data.dtype)
+            curr_delta_inds = np.zeros(len(mask), dtype=np.int64)
             num_masks = (mask >= 0).sum()
             varying_rows_out = np.zeros((num_masks, self.shape[0]), dtype=bool)
             masked_inputs_out = np.zeros((num_masks * self.shape[0], self.shape[1]))
@@ -173,6 +195,7 @@ class Tabular(Masker):
 
             s.save("max_samples", self.max_samples)
             s.save("clustering", self.clustering)
+            s.save("partition", self.partition)
 
     @classmethod
     def load(cls, in_file, instantiate=True):
@@ -185,74 +208,8 @@ class Tabular(Masker):
             kwargs["data"] = s.load("data")
             kwargs["max_samples"] = s.load("max_samples")
             kwargs["clustering"] = s.load("clustering")
+            kwargs["partition"] = s.load("partition")
         return kwargs
-
-
-@njit
-def _single_delta_mask(dind, masked_inputs, last_mask, data, x, noop_code):
-    if dind == noop_code:
-        pass
-    elif last_mask[dind]:
-        masked_inputs[:, dind] = data[:, dind]
-        last_mask[dind] = False
-    else:
-        masked_inputs[:, dind] = x[dind]
-        last_mask[dind] = True
-
-
-@njit
-def _delta_masking(
-    masks,
-    x,
-    curr_delta_inds,
-    varying_rows_out,
-    masked_inputs_tmp,
-    last_mask,
-    data,
-    variants,
-    masked_inputs_out,
-    noop_code,
-):
-    """Implements the special (high speed) delta masking API that only flips the positions we need to.
-
-    Note that we attempt to avoid doing any allocation inside this function for speed reasons.
-    """
-    dpos = 0
-    i = -1
-    masks_pos = 0
-    output_pos = 0
-    N = masked_inputs_tmp.shape[0]
-    while masks_pos < len(masks):
-        i += 1
-
-        # update the tmp masked inputs array
-        dpos = 0
-        curr_delta_inds[0] = masks[masks_pos]
-        while curr_delta_inds[dpos] < 0:  # negative values mean keep going
-            curr_delta_inds[dpos] = -curr_delta_inds[dpos] - 1  # -value + 1 is the original index that needs flipped
-            _single_delta_mask(curr_delta_inds[dpos], masked_inputs_tmp, last_mask, data, x, noop_code)
-            dpos += 1
-            curr_delta_inds[dpos] = masks[masks_pos + dpos]
-        _single_delta_mask(curr_delta_inds[dpos], masked_inputs_tmp, last_mask, data, x, noop_code)
-
-        # copy the tmp masked inputs array to the output
-        masked_inputs_out[output_pos : output_pos + N] = masked_inputs_tmp
-        masks_pos += dpos + 1
-
-        # mark which rows have been updated, so we can only evaluate the model on the rows we need to
-        if i == 0:
-            varying_rows_out[i, :] = True
-
-        else:
-            # only one column was changed
-            if dpos == 0:
-                varying_rows_out[i, :] = variants[:, curr_delta_inds[dpos]]
-
-            # more than one column was changed
-            else:
-                varying_rows_out[i, :] = np.sum(variants[:, curr_delta_inds[: dpos + 1]], axis=1) > 0
-
-        output_pos += N
 
 
 class Independent(Tabular):
@@ -310,7 +267,7 @@ class Partition(Tabular):
             If an array, then this is assumed to be the clustering of the features.
 
         """
-        super().__init__(data, max_samples=max_samples, clustering=clustering)
+        super().__init__(data, max_samples=max_samples, clustering=clustering, partition=None)
 
 
 class Impute(Masker):  # we should inherit from Tabular once we add support for arbitrary masking
@@ -328,7 +285,7 @@ class Impute(Masker):  # we should inherit from Tabular once we add support for 
             The background dataset that is used for masking.
 
         """
-        if data is dict and "mean" in data:
+        if isinstance(data, dict) and "mean" in data:
             self.mean = data.get("mean", None)
             self.cov = data.get("cov", None)
             data = np.expand_dims(data["mean"], 0)

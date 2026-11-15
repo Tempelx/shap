@@ -1,5 +1,8 @@
 """Tests for the Deep explainer."""
 
+import os
+import platform
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -29,8 +32,9 @@ def test_tf_eager_call(random_seed):
     y = y.map(lambda zz: chr(int(zz * 2 + 65))).str.get_dummies()
 
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Dense(10, input_shape=(x.shape[1],), activation="relu"))
-    model.add(tf.keras.layers.Dense(y.shape[1], input_shape=(10,), activation="softmax"))
+    model.add(tf.keras.layers.Input(shape=(x.shape[1],)))
+    model.add(tf.keras.layers.Dense(10, activation="relu"))
+    model.add(tf.keras.layers.Dense(y.shape[1], activation="softmax"))
     model.summary()
     model.compile(loss="categorical_crossentropy", optimizer="Adam")
     model.fit(x.values, y.values, epochs=2)
@@ -83,7 +87,8 @@ def test_tf_keras_mnist_cnn_call(random_seed):
     y_test = tf.keras.utils.to_categorical(y_test, num_classes)
 
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Conv2D(2, kernel_size=(3, 3), activation="relu", input_shape=input_shape))
+    model.add(tf.keras.layers.Input(shape=input_shape))
+    model.add(tf.keras.layers.Conv2D(2, kernel_size=(3, 3), activation="relu"))
     model.add(tf.keras.layers.Conv2D(4, (3, 3), activation="relu"))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
     model.add(tf.keras.layers.Dropout(0.25))
@@ -143,7 +148,7 @@ def test_tf_keras_activations(activation):
     model.fit(x, y, epochs=30, shuffle=False, verbose=0)
 
     # explain
-    e = shap.DeepExplainer((model.inputs[0], model.layers[-1].output), x)
+    e = shap.DeepExplainer((model.inputs, model.layers[-1].output), x)
     shap_values = e.shap_values(x)
     preds = model.predict(x)
 
@@ -241,20 +246,25 @@ def test_tf_keras_imdb_lstm(random_seed):
     np.testing.assert_allclose(sums, diff, atol=1e-02), "Sum of SHAP values does not match difference!"
 
 
+@pytest.mark.skipif(
+    platform.system() == "Darwin" and os.getenv("GITHUB_ACTIONS") == "true",
+    reason="Skipping on GH MacOS runners due to memory error, see GH #3929",
+)
 def test_tf_deep_imbdb_transformers():
     # GH 3522
+    pytest.importorskip("torch")
     transformers = pytest.importorskip("transformers")
 
     from shap import models
 
     # data from datasets imdb dataset
     short_data = ["I lov", "Worth", "its a", "STAR ", "First", "I had", "Isaac", "It ac", "Techn", "Hones"]
-    classifier = transformers.pipeline("sentiment-analysis", return_all_scores=True)
+    classifier = transformers.pipeline("sentiment-analysis", top_k=None)
     pmodel = models.TransformersPipeline(classifier, rescale_to_logits=True)
     explainer3 = shap.Explainer(pmodel, classifier.tokenizer)
     shap_values3 = explainer3(short_data[:10])
-    shap.plots.text(shap_values3[:, :, 1])
-    shap.plots.bar(shap_values3[:, :, 1].mean(0))
+    shap.plots.text(shap_values3[:, :, 1])  # type: ignore[call-overload]
+    shap.plots.bar(shap_values3[:, :, 1].mean(0))  # type: ignore[call-overload]
 
 
 def test_tf_deep_multi_inputs_multi_outputs():
@@ -349,6 +359,7 @@ def test_pytorch_mnist_cnn_call(torch_device, interim):
                 nn.ConvTranspose2d(20, 20, 1),
                 nn.AdaptiveAvgPool2d(output_size=(4, 4)),
                 nn.Softplus(),
+                nn.Flatten(),
             )
             self.fc_layers = nn.Sequential(
                 nn.Linear(320, 50), nn.BatchNorm1d(50), nn.ReLU(), nn.Linear(50, 10), nn.ELU(), nn.Softmax(dim=1)
@@ -357,7 +368,7 @@ def test_pytorch_mnist_cnn_call(torch_device, interim):
         def forward(self, x):
             """Run the model."""
             x = self.conv_layers(x)
-            x = x.view(-1, 320)
+            x = x.view(-1, 320)  # Redundant as `Flatten`, left as a test
             x = self.fc_layers(x)
             return x
 
@@ -443,6 +454,7 @@ def test_pytorch_custom_nested_models(torch_device):
             super().__init__()
             self.net = nn.Sequential(
                 nn.Sequential(
+                    nn.Identity(),
                     nn.Conv1d(1, 1, 1),
                     nn.ConvTranspose1d(1, 1, 1),
                 ),
@@ -492,7 +504,7 @@ def test_pytorch_custom_nested_models(torch_device):
             if batch_idx % 2 == 0:
                 print(
                     f"Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}"
-                    f" ({100. * batch_idx / len(train_loader):.0f}%)]"
+                    f" ({100.0 * batch_idx / len(train_loader):.0f}%)]"
                     f"\tLoss: {loss.item():.6f}"
                 )
 
@@ -587,7 +599,7 @@ def test_pytorch_single_output(torch_device):
             if batch_idx % 2 == 0:
                 print(
                     f"Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}"
-                    f" ({100. * batch_idx / len(train_loader):.0f}%)]"
+                    f" ({100.0 * batch_idx / len(train_loader):.0f}%)]"
                     f"\tLoss: {loss.item():.6f}"
                 )
 
@@ -640,7 +652,7 @@ def test_pytorch_single_output(torch_device):
     )
 
 
-@pytest.mark.parametrize("activation", ["relu", "selu"])
+@pytest.mark.parametrize("activation", ["relu", "selu", "gelu"])
 @pytest.mark.parametrize("torch_device", TORCH_DEVICES)
 @pytest.mark.parametrize("disconnected", [True, False])
 def test_pytorch_multiple_inputs(torch_device, disconnected, activation):
@@ -652,7 +664,7 @@ def test_pytorch_multiple_inputs(torch_device, disconnected, activation):
     from torch.nn import functional as F
     from torch.utils.data import DataLoader, TensorDataset
 
-    activation_func = {"relu": nn.ReLU(), "selu": nn.SELU()}[activation]
+    activation_func = {"relu": nn.ReLU(), "selu": nn.SELU(), "gelu": nn.GELU()}[activation]
 
     class Net(nn.Module):
         """Testing model."""
@@ -687,7 +699,7 @@ def test_pytorch_multiple_inputs(torch_device, disconnected, activation):
             if batch_idx % 2 == 0:
                 print(
                     f"Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}"
-                    f" ({100. * batch_idx / len(train_loader):.0f}%)]"
+                    f" ({100.0 * batch_idx / len(train_loader):.0f}%)]"
                     f"\tLoss: {loss.item():.6f}"
                 )
 

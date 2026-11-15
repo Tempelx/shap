@@ -268,7 +268,7 @@ def __thread_worker(q, host):
     hostname, python_binary = host.split(":")
     while True:
         # make sure we are not sending too many ssh connections to the host
-        # (if we send too many connections ssh thottling will lock us out)
+        # (if we send too many connections ssh throttling will lock us out)
         while True:
             all_clear = False
 
@@ -326,8 +326,7 @@ def __thread_worker(q, host):
 
 def __print_status():
     print(
-        "Benchmark task %d of %d done (%d failed, %d running)"
-        % (total_done, nexperiments, total_failed, total_sent - total_done),
+        f"Benchmark task {total_done} of {nexperiments} done ({total_failed} failed, {total_sent - total_done} running)",
         end="\r",
     )
     sys.stdout.flush()
@@ -377,7 +376,7 @@ def run_remote_experiments(experiments, thread_hosts, rate_limit=10):
 
     for host in thread_hosts:
         worker = Thread(target=__thread_worker, args=(q, host))
-        worker.setDaemon(True)
+        worker.daemon = True
         worker.start()
 
     for experiment in experiments:

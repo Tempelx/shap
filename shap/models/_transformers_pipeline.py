@@ -19,15 +19,16 @@ class TransformersPipeline(Model):
 
         # self.tokenizer = self.inner_model.model.tokenizer
         self.label2id = self.inner_model.model.config.label2id
+        self.label2id = {k: int(v) for k, v in self.label2id.items()}
         self.id2label = self.inner_model.model.config.id2label
         self.output_shape = (max(self.label2id.values()) + 1,)
         if len(self.output_shape) == 1:
             self.output_names = [self.id2label.get(i, "Unknown") for i in range(self.output_shape[0])]
 
     def __call__(self, strings):
-        assert not isinstance(
-            strings, str
-        ), "shap.models.TransformersPipeline expects a list of strings not a single string!"
+        assert not isinstance(strings, str), (
+            "shap.models.TransformersPipeline expects a list of strings not a single string!"
+        )
         output = np.zeros([len(strings)] + list(self.output_shape))
         pipeline_dicts = self.inner_model(list(strings))
         for i, val in enumerate(pipeline_dicts):

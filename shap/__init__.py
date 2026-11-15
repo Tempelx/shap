@@ -1,8 +1,11 @@
+from typing import Any, NoReturn
+
 from ._explanation import Cohorts, Explanation
 
 # explainers
 from .explainers import other
 from .explainers._additive import AdditiveExplainer
+from .explainers._coalition import CoalitionExplainer
 from .explainers._deep import DeepExplainer
 from .explainers._exact import ExactExplainer
 from .explainers._explainer import Explainer
@@ -28,12 +31,14 @@ _no_matplotlib_warning = (
 
 
 # plotting (only loaded if matplotlib is present)
-def unsupported(*args, **kwargs):
+
+
+def unsupported(*args: Any, **kwargs: Any) -> NoReturn:
     raise ImportError(_no_matplotlib_warning)
 
 
 class UnsupportedModule:
-    def __getattribute__(self, item):
+    def __getattribute__(self, item: str) -> NoReturn:
         raise ImportError(_no_matplotlib_warning)
 
 
@@ -87,7 +92,7 @@ else:
 
 
 # other stuff :)
-from . import datasets, links, utils  # noqa: E402
+from . import actions, datasets, links, utils  # noqa: E402
 from .actions._optimizer import ActionOptimizer  # noqa: E402
 from .utils import approximate_interactions, sample  # noqa: E402
 
@@ -96,6 +101,7 @@ from .utils._legacy import kmeans  # noqa: E402
 
 # Use __all__ to let type checkers know what is part of the public API.
 __all__ = [
+    "actions",
     "Cohorts",
     "Explanation",
     # Explainers
@@ -109,6 +115,7 @@ __all__ = [
     "KernelExplainer",
     "LinearExplainer",
     "PartitionExplainer",
+    "CoalitionExplainer",
     "PermutationExplainer",
     "SamplingExplainer",
     "TreeExplainer",

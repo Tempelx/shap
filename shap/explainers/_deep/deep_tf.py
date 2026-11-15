@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import tensorflow as tf
@@ -87,14 +87,6 @@ class TFDeep(Explainer):
             have a value of False during predictions (and hence explanations).
 
         """
-        if version.parse(tf.__version__) < version.parse("1.4.0"):
-            warnings.warn("Your TensorFlow version is older than 1.4.0 and not supported.")
-
-        if version.parse(tf.__version__) >= version.parse("2.4.0"):
-            warnings.warn(
-                "Your TensorFlow version is newer than 2.4.0 and so graph support has been removed in eager mode and some static graphs may not be supported. See PR #1483 for discussion."
-            )
-
         # determine the model inputs and outputs
         self.model_inputs = _get_model_inputs(model)
         self.model_output = _get_model_output(model)
@@ -277,11 +269,12 @@ class TFDeep(Explainer):
             elif not isinstance(X, list):
                 X = [X]
         else:
-            assert isinstance(X, list), "Expected a list of model inputs!"
-        assert len(self.model_inputs) == len(X), "Number of model inputs (%d) does not match the number given (%d)!" % (
-            len(self.model_inputs),
-            len(X),
-        )
+            if not isinstance(X, list):
+                raise TypeError("Expected a list of model inputs!")
+        if len(self.model_inputs) != len(X):
+            raise ValueError(
+                f"Number of model inputs ({len(self.model_inputs)}) does not match the number given ({len(X)})!"
+            )
 
         # rank and determine the model outputs that we will explain
         if ranked_outputs is not None and self.multi_output:

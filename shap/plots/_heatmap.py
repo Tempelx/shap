@@ -1,4 +1,4 @@
-import matplotlib.pyplot as pl
+import matplotlib.pyplot as plt
 import numpy as np
 
 from .. import Explanation
@@ -115,8 +115,8 @@ def heatmap(
     # define the plot size based on how many features we are plotting
     row_height = 0.5
     if ax is None:
-        pl.gcf().set_size_inches(plot_width, values.shape[1] * row_height + 2.5)
-        ax = pl.gca()
+        plt.gcf().set_size_inches(plot_width, values.shape[1] * row_height + 2.5)
+        ax = plt.gca()
 
     # plot the matrix of SHAP values as a heat map
     vmin, vmax = np.nanpercentile(values.flatten(), [1, 99])
@@ -154,16 +154,23 @@ def heatmap(
     # plot the f(x) line chart above the heat map
     ax.axhline(-1.5, color="#aaaaaa", linestyle="--", linewidth=0.5)
     fx = values.T.sum(0)
+    fx_max = np.abs(fx).max()
+    if fx_max > 0:
+        fx_normalized = fx / fx_max
+    else:
+        fx_normalized = fx  # all zeros, flat line — no division needed
     ax.plot(
-        -fx / np.abs(fx).max() - 1.5,
+        -fx_normalized - 1.5,
         color="#000000",
         linewidth=1,
     )
 
     # plot the bar plot on the right spine of the heat map
+    fv_max = np.abs(feature_values).max()
+    bar_widths = (feature_values / fv_max) * values.shape[0] / 20 if fv_max > 0 else np.zeros_like(feature_values)
     bar_container = ax.barh(
         heatmap_yticks_pos,
-        (feature_values / np.abs(feature_values).max()) * values.shape[0] / 20,
+        bar_widths,
         height=0.7,
         align="center",
         color="#000000",
@@ -177,7 +184,7 @@ def heatmap(
 
     m = cm.ScalarMappable(cmap=cmap)
     m.set_array([min(vmin, -vmax), max(-vmin, vmax)])
-    cb = pl.colorbar(
+    cb = plt.colorbar(
         m,
         ticks=[min(vmin, -vmax), max(-vmin, vmax)],
         ax=ax,
@@ -189,11 +196,11 @@ def heatmap(
     cb.ax.tick_params(labelsize=11, length=0)
     cb.set_alpha(1)
     cb.outline.set_visible(False)  # type: ignore
-    # bbox = cb.ax.get_window_extent().transformed(pl.gcf().dpi_scale_trans.inverted())
+    # bbox = cb.ax.get_window_extent().transformed(plt.gcf().dpi_scale_trans.inverted())
     # cb.ax.set_aspect((bbox.height - 0.9) * 15)
     # cb.draw_all()
 
     if show:
-        pl.show()
+        plt.show()
 
     return ax

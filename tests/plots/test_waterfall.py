@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeRegressor
 
 import shap
@@ -57,9 +58,15 @@ def test_waterfall_bounds(explainer):
     return fig
 
 
-@pytest.mark.mpl_image_compare(tolerance=3)
+@pytest.mark.mpl_image_compare(tolerance=5)
 def test_waterfall_custom_style(explainer):
     """Test the waterfall plot in the context of custom styles"""
+
+    # Note: the tolerance is set to 5 because matplotlib 3.10 changed the way negative values are displayed
+    # There is now an increased space before the negative sign, which leads to a RMS diff of ~4.4
+    # See: GH #3946
+
+    # TODO: reset tolerance to 3 when python 3.9 is dropped, and all tests use matplotlib 3.10+
     with _style.style_context(
         primary_color_positive="#9ACD32",
         primary_color_negative="#FFA500",
@@ -84,3 +91,30 @@ def test_waterfall_plot_for_decision_tree_explanation():
     explainer = shap.TreeExplainer(model)
     explanation = explainer(X)
     shap.plots.waterfall(explanation[0], show=False)
+
+
+def test_waterfall_plot_for_data_with_number_columns():
+    # GH 4150
+    model = KNeighborsClassifier()
+
+    def f(x):
+        return model.predict_proba(x)[:, 1]
+
+    X = pd.DataFrame(
+        [
+            [1, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0],
+            [0, 0, 1, 0, 0],
+            [0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 1],
+            [0, 0, 0, 1, 0],
+            [0, 0, 1, 0, 0],
+            [0, 1, 0, 0, 0],
+        ]
+    )
+    y = pd.Series([0, 1, 2, 3, 4, 3, 2, 1])
+    model.fit(X, y)
+    med = X.median().values.reshape((1, X.shape[1]))
+    explainer = shap.Explainer(f, med)
+    shap_values = explainer(X)
+    shap.plots.waterfall(shap_values[0], show=False)
